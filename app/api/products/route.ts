@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { products } from "@/lib/db/schema"
-import { eq, ilike } from "drizzle-orm"
+import { eq } from "drizzle-orm"
 import { isChaosActive } from "@/lib/chaos/toggles"
 
 async function corsHeaders(): Promise<Record<string, string>> {
@@ -26,39 +26,40 @@ async function corsHeaders(): Promise<Record<string, string>> {
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const page = Number(searchParams.get("page")) || 1
-  const search = searchParams.get("search") || ""
   const category = searchParams.get("category")
   const limit = 12
 
   const headers = await corsHeaders()
 
   if (await isChaosActive("off-by-one")) {
+    // BUG: offset is page * limit instead of (page - 1) * limit
+    // Page 1 skips first 12 products, page 2 skips 24, etc.
     const offset = page * limit
     const results = await db
       .select()
       .from(products)
       .where(eq(products.isActive, true))
-      .andWhere(ilike(products.name, `%${search}%`))
       .limit(limit)
       .offset(offset)
     return NextResponse.json(results, { headers })
   }
 
+  // CORRECT
   const offset = (page - 1) * limit
   let query = db
     .select()
     .from(products)
     .where(eq(products.isActive, true))
-    .andWhere(ilike(products.name, `%${search}%`))
     .limit(limit)
     .offset(offset)
 
-  const results = await query
-  const filtered = category
-    ? results.filter((p) => p.category === category)
-    : results
+  if (category) {
+    query = query.andWhere(eq(products.category, category))
+  }
 
-  return NextResponse.json(filtered, { headers })
+  const results = await query
+
+  return NextResponse.json(results, { headers })
 }
 
 export async function OPTIONS() {
