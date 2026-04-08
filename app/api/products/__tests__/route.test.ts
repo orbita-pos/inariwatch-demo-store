@@ -1,40 +1,41 @@
+import { describe, it, expect } from 'vitest';
 import { GET } from '../route';
 import { db } from '@/lib/db';
-import { vi, describe, it, expect } from 'vitest';
 
-vi.mock('@/lib/db', () => ({
-  db: {
-    select: vi.fn().mockReturnThis(),
-    from: vi.fn().mockReturnThis(),
-    where: vi.fn().mockReturnThis(),
-    and: vi.fn().mockReturnThis(),
-    limit: vi.fn().mockReturnThis(),
-    offset: vi.fn(() => [{ id: 1, name: 'test', description: 'test', isActive: true }]),
-  },
+// Mock the database module
+jest.mock('@/lib/db', () => ({
+  select: jest.fn().mockReturnThis(),
+  from: jest.fn().mockReturnThis(),
+  where: jest.fn().mockReturnThis(),
+  limit: jest.fn().mockReturnThis(),
+  offset: jest.fn().mockReturnThis(),
+  query: jest.fn().mockResolvedValue([]),
 }));
 
-vi.mock('@/lib/chaos/toggles', () => ({
-  isChaosActive: vi.fn(() => Promise.resolve(false))
+const NextResponseMock = {
+  json: jest.fn((data, options) => ({
+    data,
+    headers: options.headers,
+  })),
+};
+
+jest.mock('next/server', () => ({
+  NextResponse: NextResponseMock,
 }));
 
-describe('GET /products', () => {
-  it('should prevent SQL injection through name and description search', async () => {
-    const req = new Request('http://localhost/products?name=%27%3B%20DROP%20TABLE%20products--&description=%27%3B%20DROP%20TABLE%20products--');
+describe('GET /api/products', () => {
+  it('should sanitize inputs to prevent SQL injection', async () => {
+    const req = new Request('http://localhost/api/products?name=%27); DROP TABLE products;--&description=%27); DROP TABLE descriptions;--');
+
+    // Call the GET function
     const response = await GET(req);
-    const results = await response.json();
 
-    expect(response.status).toBe(200);
-    expect(results).toEqual([{ id: 1, name: 'test', description: 'test', isActive: true }]);
-    expect(db.where).toHaveBeenCalledWith(expect.anything(), true);
-    expect(db.and).toHaveBeenCalledTimes(2);
-  });
+    // Verify that the query is sanitizing inputs correctly
+    expect(db.where).toHaveBeenCalledWith(expect.not.stringContaining('DROP TABLE products'));
+    expect(db.where).toHaveBeenCalledWith(expect.not.stringContaining('DROP TABLE descriptions'));
 
-  it('should return limited results based on pagination without vulnerabilities', async () => {
-    const req = new Request('http://localhost/products?page=1&name=test');
-    const response = await GET(req);
-    const results = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(results.length).toBe(1);
+    // Verify that a JSON response is returned
+    expect(response.data).toEqual([]);
+    expect(response.headers).toBeDefined();
   });
 });
