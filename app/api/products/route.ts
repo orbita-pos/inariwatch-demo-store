@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { products } from "@/lib/db/schema"
-import { eq } from "drizzle-orm"
+import { eq, ilike } from "drizzle-orm"
 import { isChaosActive } from "@/lib/chaos/toggles"
 
 async function corsHeaders(): Promise<Record<string, string>> {
@@ -27,6 +27,8 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const page = Number(searchParams.get("page")) || 1
   const category = searchParams.get("category")
+  const nameSearch = searchParams.get("name") || ""
+  const descriptionSearch = searchParams.get("description") || ""
   const limit = 12
 
   const headers = await corsHeaders()
@@ -39,6 +41,8 @@ export async function GET(req: Request) {
       .select()
       .from(products)
       .where(eq(products.isActive, true))
+      .and(ilike(products.name, `%${nameSearch}%`))
+      .and(ilike(products.description, `%${descriptionSearch}%`))
       .limit(limit)
       .offset(offset)
     return NextResponse.json(results, { headers })
@@ -50,6 +54,8 @@ export async function GET(req: Request) {
     .select()
     .from(products)
     .where(eq(products.isActive, true))
+    .and(ilike(products.name, `%${nameSearch}%`))
+    .and(ilike(products.description, `%${descriptionSearch}%`))
     .limit(limit)
     .offset(offset)
 
