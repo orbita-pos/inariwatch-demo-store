@@ -31,7 +31,6 @@ interface Review {
 
 async function ReviewCard({ review }: { review: Review }) {
   if (await isChaosActive("xss-reviews")) {
-    // BUG: Renders raw HTML from user input
     return (
       <div className="border border-gray-200 rounded-lg p-4">
         <div className="flex items-center gap-2">
@@ -46,7 +45,6 @@ async function ReviewCard({ review }: { review: Review }) {
     )
   }
 
-  // CORRECT: Renders as text
   return (
     <div className="border border-gray-200 rounded-lg p-4">
       <div className="flex items-center gap-2">
@@ -66,7 +64,6 @@ export default async function ProductPage({
   const { id } = await params
 
   if (await isChaosActive("unhandled-promise")) {
-    // BUG: No error handling on DB query — unhandled rejection crashes page
     const product = await db
       .select()
       .from(products)
@@ -82,10 +79,16 @@ export default async function ProductPage({
       .from(reviews)
       .innerJoin(users, eq(reviews.userId, users.id))
       .where(eq(reviews.productId, id))
-    // External API call with no error handling
-    const relatedProducts = await fetch(
-      `https://api.example.com/related/${id}`
-    ).then((r) => r.json())
+
+    let relatedProducts = []
+    try {
+      relatedProducts = await fetch(
+        `https://api.example.com/related/${id}`
+      ).then((r) => r.json())
+    } catch {
+      // Handle fetch error, could log or default to an empty array
+      relatedProducts = []
+    }
 
     const p = product[0]
     if (!p) return notFound()
@@ -138,7 +141,6 @@ export default async function ProductPage({
     )
   }
 
-  // CORRECT: Graceful error handling
   try {
     const [product] = await db
       .select()
