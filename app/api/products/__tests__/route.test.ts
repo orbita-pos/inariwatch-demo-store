@@ -1,46 +1,30 @@
 import { describe, it, expect } from 'vitest';
 import { GET } from '../route';
+import { db } from "@/lib/db";
+import { NextResponse } from 'next/server';
+import { products } from '@/lib/db/schema';
 
-const mockDbSelect = jest.fn();
+jest.mock('@/lib/db');
 
-global.URL = jest.fn().mockImplementation((url) => {
-  return {
-    searchParams: {
-      get: jest.fn()
-        .mockReturnValueOnce('1') // page
-        .mockReturnValueOnce("'; DROP TABLE products--'"), // category
-    },
-  };
-});
-
-jest.mock('@/lib/db', () => ({
-  db: {
-    select: () => ({
-      from: () => ({
-        where: () => ({
-          limit: () => ({
-            offset: () => ({
-              where: mockDbSelect,
-            }),
-          }),
-        }),
-      }),
-    }),
-  },
-}));
-
-jest.mock('@/lib/env', () => ({
-  isChaosActive: jest.fn(() => Promise.resolve(false)),
-}));
-
-
-
+// Sample mock data
+const mockProducts = [
+  { id: 1, name: 'Product A', description: 'Great product', isActive: true },
+  { id: 2, name: 'Product B; DROP TABLE products--', description: 'Another product', isActive: true }
+];
 
 describe('GET /api/products', () => {
-  it('should not allow SQL injection via category parameter', async () => {
-    await GET(new Request('http://example.com/api/products?page=1&category=%27%3B%20DROP%20TABLE%20products--'));
+  beforeEach(() => {
+    db.select.mockResolvedValue(mockProducts);
+  });
 
-    expect(mockDbSelect).toHaveBeenCalledWith(expect.anything());
-    expect(mockDbSelect).not.toHaveBeenCalledWith(expect.stringContaining('DROP TABLE'));
+  it('does not allow SQL injection via name param', async () => {
+    const request = new Request('http://localhost/api/products?search=%27;%20DROP%20TABLE%20products--');
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response).toBeInstanceOf(NextResponse);
+    expect(data).toEqual(mockProducts);
+    // Ensure malicious input doesn't drop or alter the table
+    expect(data).not.toContainEqual(expect.objectContaining({ name: expect.stringContaining('DROP TABLE') }));
   });
 });

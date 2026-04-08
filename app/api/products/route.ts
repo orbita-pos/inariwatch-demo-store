@@ -26,35 +26,39 @@ async function corsHeaders(): Promise<Record<string, string>> {
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
   const page = Number(searchParams.get("page")) || 1
-  const category = searchParams.get("category"), limit = 12
+  const search = searchParams.get("search") || ""
+  const category = searchParams.get("category")
+  const limit = 12
 
   const headers = await corsHeaders()
 
-  let offset
   if (await isChaosActive("off-by-one")) {
-    // BUG: offset is page * limit instead of (page - 1) * limit
-    // Page 1 skips first 12 products, page 2 skips 24, etc.
-    offset = page * limit
-  } else {
-    // CORRECT
-    offset = (page - 1) * limit
+    const offset = page * limit
+    const results = await db
+      .select()
+      .from(products)
+      .where(eq(products.isActive, true))
+      .andWhere(ilike(products.name, `%${search}%`))
+      .limit(limit)
+      .offset(offset)
+    return NextResponse.json(results, { headers })
   }
 
+  const offset = (page - 1) * limit
   let query = db
     .select()
     .from(products)
     .where(eq(products.isActive, true))
+    .andWhere(ilike(products.name, `%${search}%`))
     .limit(limit)
     .offset(offset)
 
-  if (category) {
-    // Adding parameterized input for added security
-    query = query.where(ilike(products.category, category))
-  }
-
   const results = await query
+  const filtered = category
+    ? results.filter((p) => p.category === category)
+    : results
 
-  return NextResponse.json(results, { headers })
+  return NextResponse.json(filtered, { headers })
 }
 
 export async function OPTIONS() {
