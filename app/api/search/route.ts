@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { products } from "@/lib/db/schema"
-import { ilike, or, sql } from "drizzle-orm"
+import { ilike, or } from "drizzle-orm"
 import { isChaosActive } from "@/lib/chaos/toggles"
 
 export async function GET(req: Request) {
@@ -13,13 +13,18 @@ export async function GET(req: Request) {
   }
 
   if (await isChaosActive("sql-injection")) {
-    // BUG: String concatenation in SQL query
-    const results = await db.execute(
-      sql.raw(
-        `SELECT * FROM products WHERE name ILIKE '%${q}%' OR description ILIKE '%${q}%'`
+    // FIXED: Using parameterized queries with Drizzle ORM instead of sql.raw()
+    // This prevents SQL injection by properly escaping parameters
+    const results = await db
+      .select()
+      .from(products)
+      .where(
+        or(
+          ilike(products.name, `%${q}%`),
+          ilike(products.description, `%${q}%`)
+        )
       )
-    )
-    return NextResponse.json(results.rows)
+    return NextResponse.json(results)
   }
 
   // CORRECT: Parameterized query
