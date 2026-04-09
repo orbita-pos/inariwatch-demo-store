@@ -13,11 +13,10 @@ export async function GET(req: Request) {
   }
 
   if (await isChaosActive("sql-injection")) {
-    // BUG: String concatenation in SQL query
+    // FIXED: Use parameterized query with proper placeholder syntax
+    const searchPattern = `%${q}%`
     const results = await db.execute(
-      sql.raw(
-        `SELECT * FROM products WHERE name ILIKE '%${q}%' OR description ILIKE '%${q}%'`
-      )
+      sql`SELECT * FROM "products" WHERE name ILIKE ${searchPattern} OR description ILIKE ${searchPattern}`
     )
     return NextResponse.json(results.rows)
   }
