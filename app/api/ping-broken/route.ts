@@ -8,8 +8,8 @@ import { NextResponse } from "next/server"
  */
 export async function GET(req: Request) {
   const url = new URL(req.url)
-  const name = url.searchParams.get("name")
+  const name = url.searchParams.get("name")?.toUpperCase() ?? "WORLD"
   return NextResponse.json({
-    greeting: name ? `Hello, ${name.toUpperCase()}!` : "Hello!",
+    greeting: `Hello, ${name}!`,
   })
 }
