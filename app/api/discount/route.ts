@@ -29,6 +29,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "couponCode required" }, { status: 400 })
   }
 
-  const result = await applyDiscount(cart, couponCode)
+  try {
+    const result = await applyDiscount(cart, couponCode);
+    return NextResponse.json(result);
+    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   return NextResponse.json(result)
 }
