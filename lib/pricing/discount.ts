@@ -26,12 +26,7 @@ export async function applyDiscount(cart: Cart, couponCode: string): Promise<Dis
   const validation = await validateCoupon(couponCode)
 
   if (!validation) {
-    return {
-      subtotal: cart.subtotal,
-      discountApplied: 0,
-      total: cart.subtotal,
-      couponCode: null,
-    }
+    throw new Error("Invalid coupon code")
   }
 
   const discountAmount = cart.subtotal * validation.discount
