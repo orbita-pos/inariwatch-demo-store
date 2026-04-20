@@ -29,6 +29,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "couponCode required" }, { status: 400 })
   }
 
-  const result = await applyDiscount(cart, couponCode)
-  return NextResponse.json(result)
+  try {
+    const result = await applyDiscount(cart, couponCode)
+    return NextResponse.json(result)
+  } catch (error) {
+    if (error instanceof Error && error.message === "Invalid coupon code") {
+      return NextResponse.json({ error: "Invalid coupon code" }, { status: 400 })
+    }
+
+    throw error
+  }
 }
