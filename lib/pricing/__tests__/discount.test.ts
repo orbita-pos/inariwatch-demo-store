@@ -12,21 +12,21 @@ describe("applyDiscount", () => {
     vi.clearAllMocks()
   })
 
-  it("throws a user-safe invalid coupon error when validateCoupon returns null", async () => {
+  it("throws a clear invalid coupon error when validateCoupon returns null", async () => {
     vi.mocked(validateCoupon).mockResolvedValue(null)
 
     await expect(
       applyDiscount(
         {
           subtotal: 120,
-          items: [{ productId: "sku_1", quantity: 1 }],
+          items: [{ productId: "sku_123", quantity: 1 }],
         },
         "WINTER50",
       ),
     ).rejects.toThrow("Invalid coupon code")
   })
 
-  it("still applies a valid coupon discount when validation succeeds", async () => {
+  it("applies the validated discount for a known coupon code", async () => {
     vi.mocked(validateCoupon).mockResolvedValue({
       code: "SAVE10",
       discount: 0.1,
@@ -36,7 +36,7 @@ describe("applyDiscount", () => {
       applyDiscount(
         {
           subtotal: 120,
-          items: [{ productId: "sku_1", quantity: 1 }],
+          items: [{ productId: "sku_123", quantity: 1 }],
         },
         "SAVE10",
       ),
