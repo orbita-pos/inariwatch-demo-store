@@ -8,7 +8,7 @@ import { applyDiscount } from "./discount"
 import { validateCoupon } from "./validators"
 
 describe("applyDiscount", () => {
-  it("throws a clear invalid coupon error when validateCoupon returns null", async () => {
+  it("returns the subtotal unchanged when validateCoupon returns null for an unknown coupon", async () => {
     vi.mocked(validateCoupon).mockResolvedValueOnce(null)
 
     await expect(
@@ -19,10 +19,15 @@ describe("applyDiscount", () => {
         },
         "WINTER50",
       ),
-    ).rejects.toThrow("Invalid coupon code")
+    ).resolves.toEqual({
+      subtotal: 120,
+      discountApplied: 0,
+      total: 120,
+      couponCode: null,
+    })
   })
 
-  it("still applies the validated discount for a known coupon", async () => {
+  it("still applies a valid coupon discount when validation succeeds", async () => {
     vi.mocked(validateCoupon).mockResolvedValueOnce({
       code: "SAVE10",
       discount: 0.1,
