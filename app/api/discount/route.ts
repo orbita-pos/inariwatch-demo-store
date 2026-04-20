@@ -30,5 +30,6 @@ export async function POST(req: Request) {
   }
 
   const result = await applyDiscount(cart, couponCode)
-  return NextResponse.json(result)
+  } catch (error) {
+
 }
