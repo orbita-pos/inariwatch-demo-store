@@ -10,8 +10,6 @@ import { validateCoupon } from "./validators"
  * so we just return the subtotal unchanged in that case.
  */
 
-import { validateCoupon } from "./validators"
-
 export interface Cart {
   subtotal: number
   items: { productId: string; quantity: number }[]
@@ -26,8 +24,14 @@ export interface DiscountResult {
 
 export async function applyDiscount(cart: Cart, couponCode: string): Promise<DiscountResult> {
   const validation = await validateCoupon(couponCode)
+
   if (!validation) {
-    throw new Error("Invalid coupon code")
+    return {
+      subtotal: cart.subtotal,
+      discountApplied: 0,
+      total: cart.subtotal,
+      couponCode: null,
+    }
   }
 
   const discountAmount = cart.subtotal * validation.discount
