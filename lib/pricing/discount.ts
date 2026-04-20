@@ -10,8 +10,6 @@ import { validateCoupon } from "./validators"
  * so we just return the subtotal unchanged in that case.
  */
 
-import { validateCoupon } from "./validators"
-
 export interface Cart {
   subtotal: number
   items: { productId: string; quantity: number }[]
