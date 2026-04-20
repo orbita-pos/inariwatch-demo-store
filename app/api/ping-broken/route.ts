@@ -10,6 +10,6 @@ export async function GET(req: Request) {
   const url = new URL(req.url)
   const name = url.searchParams.get("name")
   return NextResponse.json({
-    greeting: `Hello, ${name.toUpperCase()}!`,
+    greeting: `Hello, ${name ? name.toUpperCase() : 'Guest'}!`,
   })
 }
