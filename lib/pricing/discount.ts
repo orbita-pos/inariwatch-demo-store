@@ -23,7 +23,16 @@ export interface DiscountResult {
 }
 
 export async function applyDiscount(cart: Cart, couponCode: string): Promise<DiscountResult> {
-  const validation = (await validateCoupon(couponCode))!
+  const validation = await validateCoupon(couponCode)
+
+  if (!validation) {
+    return {
+      subtotal: cart.subtotal,
+      discountApplied: 0,
+      total: cart.subtotal,
+      couponCode: null,
+    }
+  }
 
   const discountAmount = cart.subtotal * validation.discount
 
