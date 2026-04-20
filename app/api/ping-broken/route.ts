@@ -8,8 +8,16 @@ import { NextResponse } from "next/server"
  */
 export async function GET(req: Request) {
   const url = new URL(req.url)
-  const name = url.searchParams.get("name")?.toUpperCase() ?? "WORLD"
+  const name = url.searchParams.get("name")
+
+  if (name === null) {
+    return NextResponse.json(
+      { error: "Missing required query parameter: name" },
+      { status: 400 }
+    )
+  }
+
   return NextResponse.json({
-    greeting: `Hello, ${name}!`,
+    greeting: `Hello, ${name.toUpperCase()}!`,
   })
 }
