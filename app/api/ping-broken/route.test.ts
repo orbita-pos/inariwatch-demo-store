@@ -1,25 +1,25 @@
+import { describe, expect, it } from "vitest"
+
 import { GET } from "./route"
 
 describe("GET /api/ping-broken", () => {
-  it("returns a Guest greeting when name query param is missing", async () => {
+  it("returns a default greeting when the name query param is missing", async () => {
     const req = new Request("http://localhost/api/ping-broken")
 
     const res = await GET(req)
+    const body = await res.json()
 
     expect(res.status).toBe(200)
-    await expect(res.json()).resolves.toEqual({
-      greeting: "Hello, Guest!",
-    })
+    expect(body).toEqual({ greeting: "Hello, FRIEND!" })
   })
 
-  it("uppercases the provided name when name query param is present", async () => {
+  it("uppercases the provided name when the query param is present", async () => {
     const req = new Request("http://localhost/api/ping-broken?name=alice")
 
     const res = await GET(req)
+    const body = await res.json()
 
     expect(res.status).toBe(200)
-    await expect(res.json()).resolves.toEqual({
-      greeting: "Hello, ALICE!",
-    })
+    expect(body).toEqual({ greeting: "Hello, ALICE!" })
   })
 })
