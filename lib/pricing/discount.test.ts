@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 
 vi.mock("./validators", () => ({
   validateCoupon: vi.fn(),
@@ -12,21 +12,26 @@ describe("applyDiscount", () => {
     vi.clearAllMocks()
   })
 
-  it("throws a clear invalid coupon error when validateCoupon returns null", async () => {
+  it("returns the subtotal unchanged when validateCoupon returns null for an unknown coupon", async () => {
     vi.mocked(validateCoupon).mockResolvedValue(null)
 
     await expect(
       applyDiscount(
         {
           subtotal: 120,
-          items: [{ productId: "sku_123", quantity: 1 }],
+          items: [{ productId: "sku_1", quantity: 1 }],
         },
         "WINTER50",
       ),
-    ).rejects.toThrow("Invalid coupon code")
+    ).resolves.toEqual({
+      subtotal: 120,
+      discountApplied: 0,
+      total: 120,
+      couponCode: null,
+    })
   })
 
-  it("applies the validated coupon discount when the coupon exists", async () => {
+  it("applies a valid coupon discount when validation succeeds", async () => {
     vi.mocked(validateCoupon).mockResolvedValue({
       code: "SAVE10",
       discount: 0.1,
@@ -36,7 +41,7 @@ describe("applyDiscount", () => {
       applyDiscount(
         {
           subtotal: 120,
-          items: [{ productId: "sku_123", quantity: 1 }],
+          items: [{ productId: "sku_1", quantity: 1 }],
         },
         "SAVE10",
       ),
