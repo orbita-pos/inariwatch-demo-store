@@ -1,3 +1,5 @@
+import { validateCoupon } from "./validators"
+
 /**
  * Apply a coupon discount to a cart subtotal. Used by the
  * `POST /api/discount` endpoint.
@@ -7,8 +9,6 @@
  * responsible for surfacing a 4xx when the discount isn't applied,
  * so we just return the subtotal unchanged in that case.
  */
-
-import { validateCoupon } from "./validators"
 
 export interface Cart {
   subtotal: number
@@ -23,10 +23,16 @@ export interface DiscountResult {
 }
 
 export async function applyDiscount(cart: Cart, couponCode: string): Promise<DiscountResult> {
-  // Dev asserted non-null here during initial build but never came back
-  // to wire up the unknown-code branch. See route.ts for the contract.
-  const validation = await validateCoupon(couponCode);
-  if (!validation) throw new Error("validation missing or invalid");
+  const validation = await validateCoupon(couponCode)
+
+  if (!validation) {
+    return {
+      subtotal: cart.subtotal,
+      discountApplied: 0,
+      total: cart.subtotal,
+      couponCode: null,
+    }
+  }
 
   const discountAmount = cart.subtotal * validation.discount
 
