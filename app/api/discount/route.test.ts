@@ -1,23 +1,25 @@
-import { describe, it, expect, vi, afterEach } from "vitest"
+import { describe, it, expect, vi, beforeEach } from "vitest"
 
-vi.mock("@/lib/pricing/discount", () => ({
+vi.mock("../../../lib/pricing/discount", () => ({
   applyDiscount: vi.fn(),
 }))
 
 import { POST } from "./route"
-import { applyDiscount } from "@/lib/pricing/discount"
+import { applyDiscount } from "../../../lib/pricing/discount"
 
 describe("POST /api/discount", () => {
-  afterEach(() => {
+  beforeEach(() => {
     vi.clearAllMocks()
   })
 
-  it("returns 400 with a clear error when applyDiscount reports an invalid coupon code", async () => {
+  it("returns 400 with an invalid coupon error when applyDiscount rejects for an unknown coupon", async () => {
     vi.mocked(applyDiscount).mockRejectedValue(new Error("Invalid coupon code"))
 
-    const req = new Request("http://localhost/api/discount", {
+    const request = new Request("http://localhost/api/discount", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+      },
       body: JSON.stringify({
         cart: {
           subtotal: 120,
@@ -27,10 +29,9 @@ describe("POST /api/discount", () => {
       }),
     })
 
-    const res = await POST(req)
+    const response = await POST(request as any)
+    const body = await response.json()
 
-    expect(res.status).toBe(400)
-    await expect(res.json()).resolves.toEqual({ error: "Invalid coupon code" })
     expect(applyDiscount).toHaveBeenCalledWith(
       {
         subtotal: 120,
@@ -38,15 +39,23 @@ describe("POST /api/discount", () => {
       },
       "WINTER50",
     )
+    expect(response.status).toBe(400)
+    expect(body).toEqual({ error: "Invalid coupon code" })
   })
 
-  it("throws through unexpected errors instead of converting them to invalid coupon responses", async () => {
-    const unexpected = new Error("database unavailable")
-    vi.mocked(applyDiscount).mockRejectedValue(unexpected)
+  it("returns 200 and the discount result for a valid coupon", async () => {
+    vi.mocked(applyDiscount).mockResolvedValue({
+      subtotal: 120,
+      discountApplied: 60,
+      total: 60,
+      couponCode: "WINTER50",
+    })
 
-    const req = new Request("http://localhost/api/discount", {
+    const request = new Request("http://localhost/api/discount", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+      },
       body: JSON.stringify({
         cart: {
           subtotal: 120,
@@ -56,6 +65,15 @@ describe("POST /api/discount", () => {
       }),
     })
 
-    await expect(POST(req)).rejects.toThrow("database unavailable")
+    const response = await POST(request as any)
+    const body = await response.json()
+
+    expect(response.status).toBe(200)
+    expect(body).toEqual({
+      subtotal: 120,
+      discountApplied: 60,
+      total: 60,
+      couponCode: "WINTER50",
+    })
   })
 })

@@ -1,12 +1,3 @@
-/**
- * Apply a coupon discount to a cart subtotal. Used by the
- * `POST /api/discount` endpoint.
- *
- * Relies on `validateCoupon` from ./validators.ts which may return
- * `null` for unknown / expired codes — the caller of THIS function is
- * responsible for surfacing a 4xx when the code is invalid.
- */
-
 import { validateCoupon } from "./validators"
 
 export interface Cart {
@@ -23,6 +14,7 @@ export interface DiscountResult {
 
 export async function applyDiscount(cart: Cart, couponCode: string): Promise<DiscountResult> {
   const validation = await validateCoupon(couponCode)
+
   if (!validation) {
     throw new Error("Invalid coupon code")
   }
