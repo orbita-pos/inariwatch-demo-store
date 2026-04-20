@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 
 vi.mock("./validators", () => ({
   validateCoupon: vi.fn(),
@@ -8,22 +8,15 @@ import { applyDiscount } from "./discount"
 import { validateCoupon } from "./validators"
 
 describe("applyDiscount", () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-  })
+  it("returns the subtotal unchanged when validateCoupon returns null for an unknown coupon", async () => {
+    vi.mocked(validateCoupon).mockResolvedValueOnce(null)
 
-  it("returns the subtotal unchanged when validateCoupon returns null", async () => {
-    vi.mocked(validateCoupon).mockResolvedValue(null)
+    const cart = {
+      subtotal: 120,
+      items: [{ productId: "sku_123", quantity: 1 }],
+    }
 
-    await expect(
-      applyDiscount(
-        {
-          subtotal: 120,
-          items: [{ productId: "sku_1", quantity: 1 }],
-        },
-        "WINTER50",
-      ),
-    ).resolves.toEqual({
+    await expect(applyDiscount(cart, "WINTER50")).resolves.toEqual({
       subtotal: 120,
       discountApplied: 0,
       total: 120,
@@ -31,25 +24,22 @@ describe("applyDiscount", () => {
     })
   })
 
-  it("applies the validated coupon discount when the coupon exists", async () => {
-    vi.mocked(validateCoupon).mockResolvedValue({
-      code: "WINTER50",
-      discount: 0.5,
+  it("still applies a valid coupon discount when validation succeeds", async () => {
+    vi.mocked(validateCoupon).mockResolvedValueOnce({
+      code: "SAVE10",
+      discount: 0.1,
     })
 
-    await expect(
-      applyDiscount(
-        {
-          subtotal: 120,
-          items: [{ productId: "sku_1", quantity: 1 }],
-        },
-        "WINTER50",
-      ),
-    ).resolves.toEqual({
+    const cart = {
       subtotal: 120,
-      discountApplied: 60,
-      total: 60,
-      couponCode: "WINTER50",
+      items: [{ productId: "sku_123", quantity: 1 }],
+    }
+
+    await expect(applyDiscount(cart, "SAVE10")).resolves.toEqual({
+      subtotal: 120,
+      discountApplied: 12,
+      total: 108,
+      couponCode: "SAVE10",
     })
   })
 })
