@@ -1,15 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import React from "react"
+import { renderToString } from "react-dom/server"
 
-const notFound = vi.fn()
-const selectMock = vi.fn()
-const fromMock = vi.fn()
-const whereMock = vi.fn()
-const innerJoinMock = vi.fn()
-const isChaosActiveMock = vi.fn()
+const notFoundMock = vi.fn(() => {
+  throw new Error("NEXT_NOT_FOUND")
+})
+
+const isChaosActiveMock = vi.fn(async () => false)
+const dbSelectMock = vi.fn()
 
 vi.mock("next/navigation", () => ({
-  notFound,
+  notFound: notFoundMock,
 }))
 
 vi.mock("@/lib/chaos/toggles", () => ({
@@ -18,7 +18,7 @@ vi.mock("@/lib/chaos/toggles", () => ({
 
 vi.mock("@/lib/db", () => ({
   db: {
-    select: selectMock,
+    select: dbSelectMock,
   },
 }))
 
@@ -29,78 +29,78 @@ vi.mock("@/lib/db/schema", () => ({
     rating: "reviews.rating",
     comment: "reviews.comment",
     createdAt: "reviews.createdAt",
-    productId: "reviews.productId",
     userId: "reviews.userId",
+    productId: "reviews.productId",
   },
-  users: { id: "users.id", name: "users.name" },
+  users: {
+    id: "users.id",
+    name: "users.name",
+  },
 }))
 
 vi.mock("drizzle-orm", () => ({
-  eq: (...args: unknown[]) => ({ type: "eq", args }),
+  eq: (...args: unknown[]) => ({ eq: args }),
 }))
 
 vi.mock("./add-to-cart", () => ({
-  AddToCartButton: () => React.createElement("button", null, "Add to Cart"),
+  AddToCartButton: ({ productId }: { productId: string }) =>
+    `<button data-product-id="${productId}">Add to Cart</button>`,
 }))
 
 vi.mock("./review-form", () => ({
-  ReviewForm: () => React.createElement("form", null, "Review Form"),
+  ReviewForm: ({ productId }: { productId: string }) =>
+    `<form data-product-id="${productId}"></form>`,
 }))
 
-describe("ProductPage regression", () => {
+describe("app/(store)/products/[id]/page", () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    isChaosActiveMock.mockResolvedValue(false)
-
-    whereMock.mockResolvedValue([])
-    innerJoinMock.mockReturnValue({ where: whereMock })
-    fromMock.mockReturnValue({ where: whereMock, innerJoin: innerJoinMock })
-    selectMock.mockReturnValue({ from: fromMock })
   })
 
-  it("renders without triggering a failing external fetch during server render for an existing product", async () => {
-    const product = {
-      id: "ffecf4c2-42cc-42e1-867a-d660aebe9896",
-      name: "Test Product",
-      description: "A product used for regression testing",
-      priceCents: 2599,
-      imageUrl: null,
-      inventory: 3,
+  it("exports force-dynamic so product detail rendering does not use the failing static server fetch path", async () => {
+    const mod = await import("./page")
+    expect(mod.dynamic).toBe("force-dynamic")
+  })
+
+  it("renders a product by querying the database directly during server render", async () => {
+    const productId = "ffecf4c2-42cc-42e1-867a-d660aebe9896"
+
+    const productQuery = {
+      from: vi.fn().mockReturnThis(),
+      where: vi.fn().mockResolvedValue([
+        {
+          id: productId,
+          name: "Test Product",
+          description: "Server-rendered product",
+          priceCents: 2599,
+          imageUrl: null,
+          inventory: 3,
+        },
+      ]),
     }
 
-    whereMock
-      .mockResolvedValueOnce([product])
-      .mockResolvedValueOnce([])
+    const reviewsQuery = {
+      from: vi.fn().mockReturnThis(),
+      innerJoin: vi.fn().mockReturnThis(),
+      where: vi.fn().mockResolvedValue([]),
+    }
 
-    const fetchSpy = vi
-      .spyOn(globalThis, "fetch")
-      .mockRejectedValue(new TypeError("fetch failed"))
+    dbSelectMock
+      .mockReturnValueOnce(productQuery)
+      .mockReturnValueOnce(reviewsQuery)
 
-    const mod = await import("./page")
-    const element = await mod.default({
-      params: Promise.resolve({ id: product.id }),
-    })
+    const { default: ProductPage } = await import("./page")
+    const element = await ProductPage({ params: Promise.resolve({ id: productId }) })
+    const html = renderToString(element)
 
-    expect(fetchSpy).not.toHaveBeenCalled()
-    expect(notFound).not.toHaveBeenCalled()
-    expect(element).toBeTruthy()
-
-    fetchSpy.mockRestore()
+    expect(dbSelectMock).toHaveBeenCalledTimes(2)
+    expect(productQuery.from).toHaveBeenCalled()
+    expect(productQuery.where).toHaveBeenCalled()
+    expect(reviewsQuery.from).toHaveBeenCalled()
+    expect(reviewsQuery.innerJoin).toHaveBeenCalled()
+    expect(reviewsQuery.where).toHaveBeenCalled()
+    expect(html).toContain("Test Product")
+    expect(html).toContain("$25.99")
+    expect(notFoundMock).not.toHaveBeenCalled()
   })
-
-  it("still returns notFound for a missing product without attempting the failing fetch", async () => {
-    const fetchSpy = vi
-      .spyOn(globalThis, "fetch")
-      .mockRejectedValue(new TypeError("fetch failed"))
-
-    const mod = await import("./page")
-    await mod.default({
-      params: Promise.resolve({ id: "ffecf4c2-42cc-42e1-867a-d660aebe9896" }),
-    })
-
-    expect(fetchSpy).not.toHaveBeenCalled()
-    expect(notFound).toHaveBeenCalled()
-
-    fetchSpy.mockRestore()
-  })
-})
+}
