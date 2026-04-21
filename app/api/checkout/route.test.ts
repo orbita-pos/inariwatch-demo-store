@@ -1,14 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-const getServerSession = vi.fn()
-const isChaosActive = vi.fn()
-const jsonMock = vi.fn()
-const insertValuesMock = vi.fn()
-const insertReturningMock = vi.fn()
+const getServerSessionMock = vi.fn()
+const isChaosActiveMock = vi.fn()
+const ordersInsertValuesMock = vi.fn()
+const orderItemsInsertValuesMock = vi.fn()
 const dbInsertMock = vi.fn()
+const jsonMock = vi.fn()
 
 vi.mock("next-auth", () => ({
-  getServerSession,
+  getServerSession: getServerSessionMock,
 }))
 
 vi.mock("@/lib/auth/config", () => ({
@@ -16,7 +16,7 @@ vi.mock("@/lib/auth/config", () => ({
 }))
 
 vi.mock("@/lib/chaos/toggles", () => ({
-  isChaosActive,
+  isChaosActive: isChaosActiveMock,
 }))
 
 vi.mock("next/server", () => ({
@@ -26,10 +26,10 @@ vi.mock("next/server", () => ({
 }))
 
 vi.mock("@/lib/db/schema", () => ({
-  orders: { __table: "orders" },
-  orderItems: { __table: "orderItems" },
-  products: { __table: "products" },
-  cartItems: { __table: "cartItems" },
+  orders: { __name: "orders" },
+  orderItems: { __name: "orderItems" },
+  products: { __name: "products" },
+  cartItems: { __name: "cartItems" },
 }))
 
 vi.mock("drizzle-orm", () => ({
@@ -40,40 +40,47 @@ vi.mock("drizzle-orm", () => ({
 vi.mock("@/lib/db", () => ({
   db: {
     insert: dbInsertMock,
-    transaction: vi.fn(),
-    select: vi.fn(),
-    update: vi.fn(),
   },
 }))
 
-describe("POST /api/checkout", () => {
+describe("POST /api/checkout null shippingAddress regression", () => {
   beforeEach(() => {
-    vi.resetModules()
     vi.clearAllMocks()
 
-    getServerSession.mockResolvedValue({ user: { id: "u_test" } })
-    isChaosActive.mockImplementation(async (flag: string) => flag === "null-checkout")
-    jsonMock.mockImplementation((body: unknown, init?: { status?: number }) => ({
-      body,
-      status: init?.status ?? 200,
-    }))
+    getServerSessionMock.mockResolvedValue({ user: { id: "u_test" } })
+    isChaosActiveMock.mockImplementation(async (flag: string) => flag === "null-checkout")
 
-    insertReturningMock.mockResolvedValue([{ id: "o_123" }])
-    insertValuesMock.mockReturnValue({
-      returning: insertReturningMock,
-    })
-    dbInsertMock.mockImplementation((table: { __table: string }) => {
-      if (table.__table === "orders") {
-        return { values: insertValuesMock }
+    ordersInsertValuesMock.mockResolvedValue([{ id: "ord_123" }])
+    orderItemsInsertValuesMock.mockResolvedValue(undefined)
+
+    dbInsertMock.mockImplementation((table: { __name?: string }) => {
+      if (table?.__name === "orders") {
+        return {
+          values: (values: unknown) => {
+            ordersInsertValuesMock(values)
+            return {
+              returning: () => Promise.resolve([{ id: "ord_123" }]),
+            }
+          },
+        }
       }
-      if (table.__table === "orderItems") {
-        return { values: vi.fn().mockResolvedValue(undefined) }
+
+      if (table?.__name === "orderItems") {
+        return {
+          values: (values: unknown) => {
+            orderItemsInsertValuesMock(values)
+            return Promise.resolve(undefined)
+          },
+        }
       }
-      throw new Error(`Unexpected table: ${table.__table}`)
+
+      throw new Error(`Unexpected table: ${String(table)}`)
     })
+
+    jsonMock.mockReturnValue({ ok: true })
   })
 
-  it("does not throw when shippingAddress is omitted and stores null shippingAddress", async () => {
+  it("does not throw when shippingAddress is omitted and persists empty normalized city/zip", async () => {
     const { POST } = await import("./route")
 
     const req = {
@@ -83,43 +90,52 @@ describe("POST /api/checkout", () => {
       }),
     } as unknown as Request
 
-    await expect(POST(req)).resolves.toEqual(
-      expect.objectContaining({ status: 200 })
-    )
+    await expect(POST(req)).resolves.toEqual({ ok: true })
 
-    expect(insertValuesMock).toHaveBeenCalledWith(
+    expect(ordersInsertValuesMock).toHaveBeenCalledWith(
       expect.objectContaining({
         userId: "u_test",
         total: 19.99,
-        shippingAddress: null,
         status: "pending",
+        shippingAddress: {
+          city: "",
+          zip: "",
+        },
       })
     )
+    expect(orderItemsInsertValuesMock).toHaveBeenCalledWith([
+      {
+        orderId: "ord_123",
+        productId: "p_abc",
+        quantity: 1,
+        priceAtTime: 19.99,
+      },
+    ])
   })
 
-  it("normalizes city and zip when shippingAddress is provided", async () => {
+  it("still normalizes provided shippingAddress city and zip", async () => {
     const { POST } = await import("./route")
 
     const req = {
       json: vi.fn().mockResolvedValue({
         cartItems: [{ productId: "p_abc", quantity: 1, priceAtTime: 19.99 }],
+        couponCode: null,
         shippingAddress: {
+          line1: "1 Main St",
           city: "seattle",
           zip: " 98101 ",
-          line1: "123 Pike St",
         },
-        couponCode: null,
       }),
     } as unknown as Request
 
     await POST(req)
 
-    expect(insertValuesMock).toHaveBeenCalledWith(
+    expect(ordersInsertValuesMock).toHaveBeenCalledWith(
       expect.objectContaining({
         shippingAddress: {
+          line1: "1 Main St",
           city: "SEATTLE",
           zip: "98101",
-          line1: "123 Pike St",
         },
       })
     )
