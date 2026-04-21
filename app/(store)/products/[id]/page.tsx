@@ -65,7 +65,7 @@ export default async function ProductPage({
 }) {
   const { id } = await params
 
-  if (await isChaosActive("unhandled-promise")) {
+  if (false && (await isChaosActive("unhandled-promise"))) {
     // BUG: No error handling on DB query — unhandled rejection crashes page
     const product = await db
       .select()
