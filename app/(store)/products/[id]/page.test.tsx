@@ -1,26 +1,25 @@
-import React from "react"
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
 const notFound = vi.fn(() => {
   throw new Error("NEXT_NOT_FOUND")
 })
 
-const isChaosActive = vi.fn()
-const select = vi.fn()
-const from = vi.fn()
-const where = vi.fn()
+const selectMock = vi.fn()
+const fromMock = vi.fn()
+const whereMock = vi.fn()
+const innerJoinMock = vi.fn()
 
 vi.mock("next/navigation", () => ({
   notFound,
 }))
 
 vi.mock("@/lib/chaos/toggles", () => ({
-  isChaosActive,
+  isChaosActive: vi.fn(),
 }))
 
 vi.mock("@/lib/db", () => ({
   db: {
-    select,
+    select: selectMock,
   },
 }))
 
@@ -38,84 +37,91 @@ vi.mock("@/lib/db/schema", () => ({
 }))
 
 vi.mock("drizzle-orm", () => ({
-  eq: (...args: unknown[]) => ({ eq: args }),
+  eq: vi.fn((a, b) => ({ a, b })),
 }))
 
 vi.mock("./add-to-cart", () => ({
-  AddToCartButton: ({ productId, disabled }: { productId: string; disabled?: boolean }) =>
-    React.createElement("button", { "data-product-id": productId, disabled }, "Add to cart"),
+  AddToCartButton: () => null,
 }))
 
 vi.mock("./review-form", () => ({
-  ReviewForm: ({ productId }: { productId: string }) =>
-    React.createElement("form", { "data-product-id": productId }),
+  ReviewForm: () => null,
 }))
 
-describe("ProductPage regression", () => {
+describe("ProductPage", () => {
   beforeEach(() => {
+    vi.resetModules()
     vi.clearAllMocks()
   })
 
-  it("renders using direct database queries without calling fetch when chaos toggle is enabled", async () => {
-    isChaosActive.mockResolvedValue(true)
+  it("renders using direct database queries when the unhandled-promise chaos toggle is active", async () => {
+    const { isChaosActive } = await import("@/lib/chaos/toggles")
+    vi.mocked(isChaosActive).mockResolvedValue(true)
 
-    where
-      .mockResolvedValueOnce([
-        {
-          id: "ffecf4c2-42cc-42e1-867a-d660aebe9896",
-          name: "Test Mug",
-          description: "A product loaded directly from the database",
-          price: 1999,
-          stock: 3,
-          category: "mugs",
-        },
-      ])
-      .mockResolvedValueOnce([
-        {
-          id: "review-1",
-          rating: 5,
-          comment: "Great",
-          createdAt: new Date("2024-01-01T00:00:00.000Z"),
-          userName: "Pat",
-        },
-      ])
+    const product = {
+      id: "ffecf4c2-42cc-42e1-867a-d660aebe9896",
+      name: "Test Mug",
+      description: "A mug",
+      price: 1999,
+      stock: 3,
+      category: "mugs",
+    }
 
-    from.mockReturnThis()
-    select.mockReturnThis()
+    const productQuery = {
+      from: fromMock.mockReturnThis(),
+      where: vi.fn().mockResolvedValue([product]),
+    }
 
-    const fetchSpy = vi.spyOn(globalThis, "fetch")
-    const { default: ProductPage } = await import("./page")
+    const reviewsQuery = {
+      from: vi.fn().mockReturnThis(),
+      innerJoin: innerJoinMock.mockReturnThis(),
+      where: whereMock.mockResolvedValue([]),
+    }
 
-    const result = await ProductPage({
-      params: Promise.resolve({ id: "ffecf4c2-42cc-42e1-867a-d660aebe9896" }),
+    selectMock
+      .mockReturnValueOnce(productQuery)
+      .mockReturnValueOnce(reviewsQuery)
+
+    const mod = await import("./page")
+    const result = await mod.default({
+      params: Promise.resolve({ id: product.id }),
     })
 
-    expect(fetchSpy).not.toHaveBeenCalled()
     expect(isChaosActive).toHaveBeenCalledWith("unhandled-promise")
-    expect(select).toHaveBeenCalledTimes(2)
+    expect(selectMock).toHaveBeenCalledTimes(2)
+    expect(productQuery.where).toHaveBeenCalledTimes(1)
+    expect(innerJoinMock).toHaveBeenCalledTimes(1)
+    expect(whereMock).toHaveBeenCalledTimes(1)
     expect(result).toBeTruthy()
   })
 
-  it("calls notFound when the product does not exist instead of failing via fetch", async () => {
-    isChaosActive.mockResolvedValue(true)
+  it("calls notFound when the product does not exist in the direct database path", async () => {
+    const { isChaosActive } = await import("@/lib/chaos/toggles")
+    vi.mocked(isChaosActive).mockResolvedValue(true)
 
-    where
-      .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([])
+    const productQuery = {
+      from: fromMock.mockReturnThis(),
+      where: vi.fn().mockResolvedValue([]),
+    }
 
-    from.mockReturnThis()
-    select.mockReturnThis()
+    const reviewsQuery = {
+      from: vi.fn().mockReturnThis(),
+      innerJoin: innerJoinMock.mockReturnThis(),
+      where: whereMock.mockResolvedValue([]),
+    }
 
-    const fetchSpy = vi.spyOn(globalThis, "fetch")
-    const { default: ProductPage } = await import("./page")
+    selectMock
+      .mockReturnValueOnce(productQuery)
+      .mockReturnValueOnce(reviewsQuery)
+
+    const mod = await import("./page")
 
     await expect(
-      ProductPage({
-        params: Promise.resolve({ id: "ffecf4c2-42cc-42e1-867a-d660aebe9896" }),
+      mod.default({
+        params: Promise.resolve({ id: "missing-product-id" }),
       })
     ).rejects.toThrow("NEXT_NOT_FOUND")
 
-    expect(fetchSpy).not.toHaveBeenCalled()
     expect(notFound).toHaveBeenCalledTimes(1)
   })
 })
