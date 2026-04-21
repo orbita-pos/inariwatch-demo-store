@@ -62,10 +62,8 @@ export async function POST(req: Request) {
   const { cartItems: items, shippingAddress, couponCode } = await req.json()
 
   if (await isChaosActive("null-checkout")) {
-    // BUG: No null check on shippingAddress
-    const city = shippingAddress.city.toUpperCase()
-    const zip = shippingAddress.zip.trim()
-    // falls through to create order with processed address
+    const city = shippingAddress?.city?.toUpperCase() ?? ""
+    const zip = shippingAddress?.zip?.trim() ?? ""
     const total = items.reduce(
       (sum: number, i: CartItem) => sum + i.priceAtTime * i.quantity,
       0
@@ -99,6 +97,14 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json({ orderId: order.id, status: "processing" })
+  }
+
+  // CORRECT: Validate before accessing
+  if (!shippingAddress?.city || !shippingAddress?.zip) {
+    return NextResponse.json(
+      { error: "Shipping address with city and zip required" },
+      { status: 400 }
+    )
   }
 
   // CORRECT: Validate before accessing
