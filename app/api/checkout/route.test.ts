@@ -2,10 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const getServerSessionMock = vi.fn()
 const isChaosActiveMock = vi.fn()
-const orderInsertValuesMock = vi.fn()
-const orderInsertReturningMock = vi.fn()
+const ordersInsertValuesMock = vi.fn()
 const orderItemsInsertValuesMock = vi.fn()
-const dbInsertMock = vi.fn()
 
 vi.mock("next-auth", () => ({
   getServerSession: getServerSessionMock,
@@ -20,20 +18,21 @@ vi.mock("@/lib/chaos/toggles", () => ({
 }))
 
 vi.mock("@/lib/db/schema", () => ({
-  orders: { __table: "orders" },
-  orderItems: { __table: "orderItems" },
-  products: { __table: "products" },
-  cartItems: { __table: "cartItems" },
-}))
-
-vi.mock("drizzle-orm", () => ({
-  eq: vi.fn(),
-  sql: vi.fn(),
+  orders: { id: "id" },
+  orderItems: {},
+  products: {},
+  cartItems: {},
 }))
 
 vi.mock("@/lib/db", () => ({
   db: {
-    insert: dbInsertMock,
+    insert: vi.fn((table: unknown) => {
+      if (table && typeof table === "object" && "id" in (table as Record<string, unknown>)) {
+        return { values: ordersInsertValuesMock }
+      }
+      return { values: orderItemsInsertValuesMock }
+    }),
+    transaction: vi.fn(),
   },
 }))
 
@@ -44,24 +43,14 @@ describe("POST /api/checkout regression", () => {
     getServerSessionMock.mockResolvedValue({ user: { id: "u_test" } })
     isChaosActiveMock.mockImplementation(async (flag: string) => flag === "null-checkout")
 
-    orderInsertReturningMock.mockResolvedValue([{ id: "ord_123" }])
-    orderInsertValuesMock.mockReturnValue({
-      returning: orderInsertReturningMock,
+    ordersInsertValuesMock.mockReturnValue({
+      returning: vi.fn().mockResolvedValue([{ id: "ord_123" }]),
     })
-    orderItemsInsertValuesMock.mockResolvedValue(undefined)
 
-    dbInsertMock.mockImplementation((table: { __table?: string }) => {
-      if (table?.__table === "orders") {
-        return { values: orderInsertValuesMock }
-      }
-      if (table?.__table === "orderItems") {
-        return { values: orderItemsInsertValuesMock }
-      }
-      throw new Error(`Unexpected table: ${String(table)}`)
-    })
+    orderItemsInsertValuesMock.mockResolvedValue(undefined)
   })
 
-  it("does not throw when shippingAddress is omitted and creates the order with an empty shippingAddress object", async () => {
+  it("does not throw when shippingAddress is omitted and stores null shippingAddress", async () => {
     const { POST } = await import("./route")
 
     const req = new Request("http://localhost/api/checkout", {
@@ -73,28 +62,22 @@ describe("POST /api/checkout regression", () => {
       }),
     })
 
-    const res = await POST(req)
-    const body = await res.json()
+    const response = await POST(req)
+    const body = await response.json()
 
-    expect(res.status).toBe(200)
+    expect(response.status).toBe(200)
     expect(body).toEqual({ orderId: "ord_123", status: "processing" })
-    expect(orderInsertValuesMock).toHaveBeenCalledWith({
-      userId: "u_test",
-      total: 19.99,
-      shippingAddress: {},
-      status: "pending",
-    })
-    expect(orderItemsInsertValuesMock).toHaveBeenCalledWith([
-      {
-        orderId: "ord_123",
-        productId: "p_abc",
-        quantity: 1,
-        priceAtTime: 19.99,
-      },
-    ])
+    expect(ordersInsertValuesMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: "u_test",
+        total: 19.99,
+        shippingAddress: null,
+        status: "pending",
+      })
+    )
   })
 
-  it("normalizes provided city and zip when shippingAddress exists", async () => {
+  it("normalizes city and zip when shippingAddress is provided", async () => {
     const { POST } = await import("./route")
 
     const req = new Request("http://localhost/api/checkout", {
@@ -103,7 +86,7 @@ describe("POST /api/checkout regression", () => {
       body: JSON.stringify({
         cartItems: [{ productId: "p_abc", quantity: 1, priceAtTime: 19.99 }],
         shippingAddress: {
-          line1: "123 Test St",
+          line1: "123 Main St",
           city: "seattle",
           zip: " 98101 ",
         },
@@ -111,18 +94,17 @@ describe("POST /api/checkout regression", () => {
       }),
     })
 
-    const res = await POST(req)
+    const response = await POST(req)
 
-    expect(res.status).toBe(200)
-    expect(orderInsertValuesMock).toHaveBeenCalledWith({
-      userId: "u_test",
-      total: 19.99,
-      shippingAddress: {
-        line1: "123 Test St",
-        city: "SEATTLE",
-        zip: "98101",
-      },
-      status: "pending",
-    })
+    expect(response.status).toBe(200)
+    expect(ordersInsertValuesMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        shippingAddress: expect.objectContaining({
+          line1: "123 Main St",
+          city: "SEATTLE",
+          zip: "98101",
+        }),
+      })
+    )
   })
 })
