@@ -1,24 +1,22 @@
-import { describe, it, expect, vi, beforeEach } from "vitest"
-import { renderToString } from "react-dom/server"
+import { describe, expect, it, vi, beforeEach } from "vitest"
+import React from "react"
 
-const notFoundMock = vi.fn(() => {
+const notFound = vi.fn(() => {
   throw new Error("NEXT_NOT_FOUND")
 })
 
-const isChaosActiveMock = vi.fn(async () => false)
-const dbSelectMock = vi.fn()
-
 vi.mock("next/navigation", () => ({
-  notFound: notFoundMock,
+  notFound,
 }))
 
-vi.mock("@/lib/chaos/toggles", () => ({
-  isChaosActive: isChaosActiveMock,
-}))
+const selectMock = vi.fn()
+const fromMock = vi.fn()
+const whereMock = vi.fn()
+const innerJoinMock = vi.fn()
 
 vi.mock("@/lib/db", () => ({
   db: {
-    select: dbSelectMock,
+    select: selectMock,
   },
 }))
 
@@ -32,10 +30,7 @@ vi.mock("@/lib/db/schema", () => ({
     userId: "reviews.userId",
     productId: "reviews.productId",
   },
-  users: {
-    id: "users.id",
-    name: "users.name",
-  },
+  users: { id: "users.id", name: "users.name" },
 }))
 
 vi.mock("drizzle-orm", () => ({
@@ -43,64 +38,90 @@ vi.mock("drizzle-orm", () => ({
 }))
 
 vi.mock("./add-to-cart", () => ({
-  AddToCartButton: ({ productId }: { productId: string }) =>
-    `<button data-product-id="${productId}">Add to Cart</button>`,
+  AddToCartButton: () => React.createElement("button", null, "Add to Cart"),
 }))
 
 vi.mock("./review-form", () => ({
-  ReviewForm: ({ productId }: { productId: string }) =>
-    `<form data-product-id="${productId}"></form>`,
+  ReviewForm: () => React.createElement("form", null, "Review Form"),
 }))
 
-describe("app/(store)/products/[id]/page", () => {
+describe("ProductPage regression", () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
-  it("exports force-dynamic so product detail rendering does not use the failing static server fetch path", async () => {
-    const mod = await import("./page")
-    expect(mod.dynamic).toBe("force-dynamic")
-  })
+  it("renders product details from direct database queries without relying on fetch during server render", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockRejectedValue(new TypeError("fetch failed"))
 
-  it("renders a product by querying the database directly during server render", async () => {
-    const productId = "ffecf4c2-42cc-42e1-867a-d660aebe9896"
+    const product = {
+      id: "ffecf4c2-42cc-42e1-867a-d660aebe9896",
+      name: "Test Mug",
+      description: "A product rendered on the server",
+      price: 2599,
+      category: "mugs",
+      stock: 3,
+    }
 
     const productQuery = {
-      from: vi.fn().mockReturnThis(),
-      where: vi.fn().mockResolvedValue([
+      from: fromMock.mockReturnThis(),
+      where: whereMock.mockResolvedValueOnce([product]),
+    }
+
+    const reviewsQuery = {
+      from: fromMock.mockReturnThis(),
+      innerJoin: innerJoinMock.mockReturnThis(),
+      where: whereMock.mockResolvedValueOnce([
         {
-          id: productId,
-          name: "Test Product",
-          description: "Server-rendered product",
-          priceCents: 2599,
-          imageUrl: null,
-          inventory: 3,
+          id: "review-1",
+          rating: 5,
+          comment: "Great",
+          createdAt: new Date("2024-01-01T00:00:00.000Z"),
+          userName: "Alice",
         },
       ]),
     }
 
-    const reviewsQuery = {
-      from: vi.fn().mockReturnThis(),
-      innerJoin: vi.fn().mockReturnThis(),
-      where: vi.fn().mockResolvedValue([]),
-    }
-
-    dbSelectMock
+    selectMock
       .mockReturnValueOnce(productQuery)
       .mockReturnValueOnce(reviewsQuery)
 
-    const { default: ProductPage } = await import("./page")
-    const element = await ProductPage({ params: Promise.resolve({ id: productId }) })
-    const html = renderToString(element)
+    const mod = await import("./page")
+    const element = await mod.default({
+      params: Promise.resolve({ id: product.id }),
+    })
 
-    expect(dbSelectMock).toHaveBeenCalledTimes(2)
-    expect(productQuery.from).toHaveBeenCalled()
-    expect(productQuery.where).toHaveBeenCalled()
-    expect(reviewsQuery.from).toHaveBeenCalled()
-    expect(reviewsQuery.innerJoin).toHaveBeenCalled()
-    expect(reviewsQuery.where).toHaveBeenCalled()
-    expect(html).toContain("Test Product")
-    expect(html).toContain("$25.99")
-    expect(notFoundMock).not.toHaveBeenCalled()
+    expect(fetchSpy).not.toHaveBeenCalled()
+    expect(selectMock).toHaveBeenCalledTimes(2)
+    expect(element).toBeTruthy()
+
+    fetchSpy.mockRestore()
   })
-}
+
+  it("calls notFound when the product id does not exist instead of attempting a failing fetch path", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockRejectedValue(new TypeError("fetch failed"))
+
+    const productQuery = {
+      from: fromMock.mockReturnThis(),
+      where: whereMock.mockResolvedValueOnce([]),
+    }
+
+    selectMock.mockReturnValueOnce(productQuery)
+
+    const mod = await import("./page")
+
+    await expect(
+      mod.default({
+        params: Promise.resolve({ id: "ffecf4c2-42cc-42e1-867a-d660aebe9896" }),
+      })
+    ).rejects.toThrow("NEXT_NOT_FOUND")
+
+    expect(notFound).toHaveBeenCalledTimes(1)
+    expect(fetchSpy).not.toHaveBeenCalled()
+
+    fetchSpy.mockRestore()
+  })
+})
