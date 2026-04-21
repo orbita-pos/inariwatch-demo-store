@@ -62,7 +62,12 @@ export async function POST(req: Request) {
   const { cartItems: items, shippingAddress, couponCode } = await req.json()
 
   if (await isChaosActive("null-checkout")) {
-    // BUG: No null check on shippingAddress
+    if (!shippingAddress?.city || !shippingAddress?.zip) {
+      return NextResponse.json(
+        { error: "Shipping address with city and zip required" },
+        { status: 400 }
+      )
+    }
     const city = shippingAddress.city.toUpperCase()
     const zip = shippingAddress.zip.trim()
     // falls through to create order with processed address
