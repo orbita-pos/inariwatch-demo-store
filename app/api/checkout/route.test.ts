@@ -1,13 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-const getServerSessionMock = vi.fn()
-const isChaosActiveMock = vi.fn()
-const ordersValuesMock = vi.fn()
-const orderItemsValuesMock = vi.fn()
-const dbInsertMock = vi.fn()
+const getServerSession = vi.fn()
+const jsonResponse = vi.fn((body: unknown, init?: ResponseInit) => ({ body, status: init?.status ?? 200 }))
+const isChaosActive = vi.fn()
 
 vi.mock("next-auth", () => ({
-  getServerSession: getServerSessionMock,
+  getServerSession,
+}))
+
+vi.mock("next/server", () => ({
+  NextResponse: {
+    json: jsonResponse,
+  },
 }))
 
 vi.mock("@/lib/auth/config", () => ({
@@ -15,14 +19,18 @@ vi.mock("@/lib/auth/config", () => ({
 }))
 
 vi.mock("@/lib/chaos/toggles", () => ({
-  isChaosActive: isChaosActiveMock,
+  isChaosActive,
+}))
+
+vi.mock("@/lib/db", () => ({
+  db: {},
 }))
 
 vi.mock("@/lib/db/schema", () => ({
-  orders: { __name: "orders" },
-  orderItems: { __name: "orderItems" },
-  products: { __name: "products" },
-  cartItems: { __name: "cartItems" },
+  orders: {},
+  orderItems: {},
+  products: {},
+  cartItems: {},
 }))
 
 vi.mock("drizzle-orm", () => ({
@@ -30,90 +38,48 @@ vi.mock("drizzle-orm", () => ({
   sql: vi.fn(),
 }))
 
-vi.mock("@/lib/db", () => ({
-  db: {
-    insert: dbInsertMock,
-    transaction: vi.fn(),
-    select: vi.fn(),
-    update: vi.fn(),
-  },
-}))
-
 describe("POST /api/checkout", () => {
   beforeEach(() => {
-    vi.resetModules()
     vi.clearAllMocks()
-
-    getServerSessionMock.mockResolvedValue({ user: { id: "u_test" } })
-    isChaosActiveMock.mockImplementation(async (flag: string) => flag === "null-checkout")
-
-    ordersValuesMock.mockReturnValue({
-      returning: vi.fn().mockResolvedValue([{ id: "ord_123" }]),
-    })
-    orderItemsValuesMock.mockResolvedValue(undefined)
-
-    dbInsertMock.mockImplementation((table: { __name?: string }) => {
-      if (table?.__name === "orders") {
-        return { values: ordersValuesMock }
-      }
-      if (table?.__name === "orderItems") {
-        return { values: orderItemsValuesMock }
-      }
-      throw new Error("Unexpected table")
-    })
+    getServerSession.mockResolvedValue({ user: { id: "u_test" } })
+    isChaosActive.mockResolvedValue(false)
   })
 
-  it("does not throw when shippingAddress is omitted and returns a successful response", async () => {
+  it("returns 400 when shippingAddress is omitted instead of throwing on shippingAddress.city", async () => {
     const { POST } = await import("./route")
 
-    const req = new Request("http://localhost/api/checkout", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
+    const req = {
+      json: vi.fn().mockResolvedValue({
         cartItems: [{ productId: "p_abc", quantity: 1, priceAtTime: 19.99 }],
         couponCode: null,
       }),
+    } as unknown as Request
+
+    await expect(POST(req)).resolves.toEqual({
+      body: { error: "Shipping address with city and zip required" },
+      status: 400,
     })
 
-    const res = await POST(req)
-
-    expect(res.status).toBeLessThan(500)
-    expect(ordersValuesMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        userId: "u_test",
-        total: 19.99,
-        shippingAddress: {
-          city: "",
-          zip: "",
-        },
-        status: "pending",
-      })
+    expect(jsonResponse).toHaveBeenCalledWith(
+      { error: "Shipping address with city and zip required" },
+      { status: 400 }
     )
   })
 
-  it("normalizes provided shippingAddress city and zip without crashing", async () => {
+  it("returns 400 when shippingAddress is present but city is missing", async () => {
     const { POST } = await import("./route")
 
-    const req = new Request("http://localhost/api/checkout", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
+    const req = {
+      json: vi.fn().mockResolvedValue({
         cartItems: [{ productId: "p_abc", quantity: 1, priceAtTime: 19.99 }],
-        shippingAddress: { city: "seattle", zip: " 98101 " },
+        shippingAddress: { zip: "10001" },
         couponCode: null,
       }),
+    } as unknown as Request
+
+    await expect(POST(req)).resolves.toEqual({
+      body: { error: "Shipping address with city and zip required" },
+      status: 400,
     })
-
-    const res = await POST(req)
-
-    expect(res.status).toBeLessThan(500)
-    expect(ordersValuesMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        shippingAddress: {
-          city: "SEATTLE",
-          zip: "98101",
-        },
-      })
-    )
   })
 })

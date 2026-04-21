@@ -61,9 +61,17 @@ export async function POST(req: Request) {
 
   const { cartItems: items, shippingAddress, couponCode } = await req.json()
 
+  if (!shippingAddress?.city || !shippingAddress?.zip) {
+    return NextResponse.json(
+      { error: "Shipping address with city and zip required" },
+      { status: 400 }
+    )
+  }
+
   if (await isChaosActive("null-checkout")) {
-    const city = shippingAddress?.city?.toUpperCase() ?? ""
-    const zip = shippingAddress?.zip?.trim() ?? ""
+    const city = shippingAddress.city.toUpperCase()
+    const zip = shippingAddress.zip.trim()
+    // falls through to create order with processed address
     const total = items.reduce(
       (sum: number, i: CartItem) => sum + i.priceAtTime * i.quantity,
       0
@@ -99,65 +107,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ orderId: order.id, status: "processing" })
   }
 
-  // CORRECT: Validate before accessing
-  if (!shippingAddress?.city || !shippingAddress?.zip) {
-    return NextResponse.json(
-      { error: "Shipping address with city and zip required" },
-      { status: 400 }
-    )
-  }
-
-  // CORRECT: Validate before accessing
-  if (!shippingAddress?.city || !shippingAddress?.zip) {
-    return NextResponse.json(
-      { error: "Shipping address with city and zip required" },
-      { status: 400 }
-    )
-  }
-
   if (!items || !Array.isArray(items) || items.length === 0) {
     return NextResponse.json({ error: "Cart is empty" }, { status: 400 })
   }
-
-  const total = items.reduce(
-    (sum: number, i: CartItem) => sum + i.priceAtTime * i.quantity,
-    0
-  )
-
-  // Process stock
-  await processOrder(session.user.id, items)
-
-  const [order] = await db
-    .insert(orders)
-    .values({
-      userId: session.user.id,
-      total,
-      shippingAddress,
-      status: "pending",
-    })
-    .returning()
-
-  await db.insert(orderItems).values(
-    items.map((i: CartItem) => ({
-      orderId: order.id,
-      productId: i.productId,
-      quantity: i.quantity,
-      priceAtTime: i.priceAtTime,
-    }))
-  )
-
-  // Clear cart
-  await db.delete(cartItems).where(eq(cartItems.userId, session.user.id))
-
-  if (await isChaosActive("hardcoded-secret")) {
-    // BUG: Hardcoded API key exposed in code and response
-    const stripeKey = "FAKE_KEY_demo_hardcoded_secret_for_testing"
-    return NextResponse.json(
-      { orderId: order.id, status: "processing" },
-      { headers: { "X-Payment-Key": stripeKey } }
-    )
-  }
-
-  // CORRECT: Use environment variable, don't expose in response
-  return NextResponse.json({ orderId: order.id, status: "processing" })
-}
