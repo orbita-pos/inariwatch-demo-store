@@ -1,3 +1,4 @@
+// Bug: i <= length reads past end
 module.exports = function sumArray(arr) {
   let total = 0;
   for (let i = 0; i < arr.length; i++) {
