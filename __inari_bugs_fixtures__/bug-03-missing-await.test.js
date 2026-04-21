@@ -1,43 +1,32 @@
 const saveUser = require('./bug-03-missing-await');
 
 describe('bug-03-missing-await regression', () => {
-  test('awaits the insert before resolving', async () => {
+  test('waits for the insert to finish before resolving', async () => {
     let insertFinished = false;
-    let resolveInsert;
 
     const db = {
-      insert: jest.fn(() => new Promise((resolve) => {
-        resolveInsert = () => {
-          insertFinished = true;
-          resolve();
-        };
-      })),
+      insert: jest.fn(
+        () =>
+          new Promise((resolve) => {
+            setTimeout(() => {
+              insertFinished = true;
+              resolve();
+            }, 0);
+          })
+      ),
     };
 
-    const savePromise = saveUser(db, { id: 1, name: 'A' });
+    const result = await saveUser(db, { id: 1, name: 'Ada' });
 
-    let resolved = false;
-    savePromise.then(() => {
-      resolved = true;
-    });
-
-    await Promise.resolve();
-
-    expect(db.insert).toHaveBeenCalledWith('users', { id: 1, name: 'A' });
-    expect(insertFinished).toBe(false);
-    expect(resolved).toBe(false);
-
-    resolveInsert();
-
-    await expect(savePromise).resolves.toEqual({ ok: true });
+    expect(db.insert).toHaveBeenCalledWith('users', { id: 1, name: 'Ada' });
     expect(insertFinished).toBe(true);
-    expect(resolved).toBe(true);
+    expect(result).toEqual({ ok: true });
   });
 
-  test('propagates insert rejection instead of leaking an unhandled rejection', async () => {
-    const dbError = new Error('database connection closed');
+  test('propagates insert failures instead of leaking an unhandled rejection', async () => {
+    const error = new Error('database connection closed');
     const db = {
-      insert: jest.fn().mockRejectedValue(dbError),
+      insert: jest.fn(() => Promise.reject(error)),
     };
 
     await expect(saveUser(db, { id: 2 })).rejects.toThrow('database connection closed');
