@@ -39,6 +39,9 @@ export default async function ProductPage({
       .from(reviews)
       .innerJoin(users, eq(reviews.userId, users.id))
       .where(eq(reviews.productId, id))
+    await fetch(`https://api.example.com/related/${id}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .catch(() => null)
 
     const p = product[0]
     if (!p) return notFound()
