@@ -59,7 +59,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const { cartItems: items, shippingAddress, couponCode } = await req.json()
+  const { cartItems: items, shippingAddress, couponCode } = await req.json()  
+
+  // Ensure shippingAddress is defined and has required properties in all scenarios
+  if (!shippingAddress || !shippingAddress.city || !shippingAddress.zip) {
+    return NextResponse.json(
+      { error: "Shipping address with city and zip is required" },
+      { status: 400 }
+    );
+  }
 
   if (await isChaosActive("null-checkout")) {
     // BUG: No null check on shippingAddress
