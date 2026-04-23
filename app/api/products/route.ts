@@ -53,12 +53,13 @@ export async function GET(req: Request) {
     .limit(limit)
     .offset(offset)
 
-  const results = await query
-  const filtered = category
-    ? results.filter((p) => p.category === category)
-    : results
+  if (category) {
+    query = query.andWhere(eq(products.category, category))
+  }
 
-  return NextResponse.json(filtered, { headers })
+  const results = await query
+
+  return NextResponse.json(results, { headers })
 }
 
 export async function OPTIONS() {
