@@ -1,9 +1,8 @@
-import { describe, expect, it } from "vitest"
-
+import { describe, it, expect } from "vitest"
 import { GET } from "./route"
 
 describe("GET /api/ping-broken", () => {
-  it("returns a default uppercase greeting when name is missing", async () => {
+  it("returns a default greeting when name is missing", async () => {
     const req = new Request("https://demo-store.inariwatch.com/api/ping-broken")
 
     const res = await GET(req)
