@@ -1,6 +1,10 @@
 // Bug: data may be undefined when API returns empty
 module.exports = function sumItems(data) {
+  if (!Array.isArray(data)) {
+    return 0;
+  }
+
   let total = 0;
-  (Array.isArray(data) ? data : []).forEach(item => { total += item.value; });
+  data.forEach(item => { total += item.value; });
   return total;
 };
