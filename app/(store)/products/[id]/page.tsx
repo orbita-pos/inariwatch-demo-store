@@ -85,7 +85,7 @@ export default async function ProductPage({
     // External API call with no error handling
     const relatedProducts = await fetch(
       `https://api.example.com/related/${id}`
-    ).then((r) => r.json())
+    ).then((r) => r.json()).catch(() => []);
 
     const p = product[0]
     if (!p) return notFound()
