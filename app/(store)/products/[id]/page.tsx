@@ -82,10 +82,14 @@ export default async function ProductPage({
       .from(reviews)
       .innerJoin(users, eq(reviews.userId, users.id))
       .where(eq(reviews.productId, id))
-    // External API call with no error handling
-    const relatedProducts = await fetch(
-      `https://api.example.com/related/${id}`
-    ).then((r) => r.json())
+    // External API call with error handling to prevent crash
+    try {
+      const relatedProducts = await fetch(
+        `https://api.example.com/related/${id}`
+      ).then((r) => r.json())
+    } catch {
+      // Silently handle fetch errors
+    }
 
     const p = product[0]
     if (!p) return notFound()
