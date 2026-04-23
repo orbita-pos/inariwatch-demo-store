@@ -1,24 +1,27 @@
 import { describe, expect, it } from "vitest"
+
 import { GET } from "./route"
 
 describe("GET /api/ping-broken", () => {
-  it("returns a Guest greeting when name is omitted instead of throwing", async () => {
+  it("returns a default uppercase greeting when name is missing", async () => {
     const req = new Request("https://demo-store.inariwatch.com/api/ping-broken")
 
     const res = await GET(req)
-    const json = await res.json()
 
     expect(res.status).toBe(200)
-    expect(json).toEqual({ greeting: "Hello, GUEST!" })
+    await expect(res.json()).resolves.toEqual({
+      greeting: "Hello, WORLD!",
+    })
   })
 
   it("uppercases the provided name in the greeting", async () => {
     const req = new Request("https://demo-store.inariwatch.com/api/ping-broken?name=inari")
 
     const res = await GET(req)
-    const json = await res.json()
 
     expect(res.status).toBe(200)
-    expect(json).toEqual({ greeting: "Hello, INARI!" })
+    await expect(res.json()).resolves.toEqual({
+      greeting: "Hello, INARI!",
+    })
   })
 })
