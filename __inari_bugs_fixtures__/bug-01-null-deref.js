@@ -1,4 +1,5 @@
 // Bug: user.profile can be undefined
 module.exports = function getUserName(user) {
-  return user.profile.name.toUpperCase();
+  const profile = user.profile || {};
+  return String(profile.name || '').toUpperCase();
 };
