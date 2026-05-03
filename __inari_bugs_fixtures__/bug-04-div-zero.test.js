@@ -5,7 +5,7 @@ describe('bug-04-div-zero regression', () => {
     expect(average([])).toBe(0);
   });
 
-  test('still computes the average for non-empty arrays', () => {
+  test('still computes the average normally for non-empty arrays', () => {
     expect(average([2, 4, 6])).toBe(4);
   });
 });
